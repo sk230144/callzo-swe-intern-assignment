@@ -1,0 +1,13 @@
+@import 'tailwindcss';
+
+:focus-visible {
+  outline: 3px solid var(--color-blue-600);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

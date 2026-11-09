@@ -1,0 +1,30 @@
+name: callzo-task2
+
+services:
+  # Published for linux/arm64 only; Docker Desktop emulates it on x86 machines.
+  mock-api:
+    image: meetrj/callzo-mock-usage-api
+    platform: linux/arm64
+    container_name: mock-api
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request as u; u.urlopen('http://localhost:8001/health', timeout=4)
+      interval: 5s
+      timeout: 6s
+      retries: 40
+
+  frontend:
+    image: risabht043/callzo-task2-frontend:1.0.0
+    container_name: frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      mock-api:
+        condition: service_healthy
+    environment:
+      - API_URL=http://mock-api:8001

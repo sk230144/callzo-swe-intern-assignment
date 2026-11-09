@@ -1,0 +1,79 @@
+name: callzo-task1
+
+# The ${VAR:-default} values are for local runs only, so that `docker compose up`
+# needs no setup. Real deployments inject their own. See .env.example.
+x-app-env: &app-env
+  DATABASE_URL: postgresql://callzo:${POSTGRES_PASSWORD:-local-dev-password}@db:5432/usage
+  WEBHOOK_SECRET: ${WEBHOOK_SECRET:-callzo_test_secret_change_me}
+  API_KEY: ${API_KEY:-local-dev-api-key}
+  MONTHLY_CAP_CENTS: ${MONTHLY_CAP_CENTS:-500}
+  MONTH_GRACE_DAYS: ${MONTH_GRACE_DAYS:-3}
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: callzo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-dev-password}
+      POSTGRES_DB: usage
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U callzo -d usage"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: .
+      target: runtime
+    environment: *app-env
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=2)
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  worker:
+    build:
+      context: .
+      target: runtime
+    command: ["python", "-m", "app.worker"]
+    environment: *app-env
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Published for linux/arm64 only; Docker Desktop emulates it on x86 machines.
+  simulator:
+    image: meetrj/callzo-webhook-simulator
+    platform: linux/arm64
+    depends_on:
+      api:
+        condition: service_healthy
+    command: ["--url", "http://api:8000/webhooks/calls", "--scenario", "all"]
+
+  # Not started by `docker compose up`. Run with: docker compose run --rm tests
+  tests:
+    profiles: ["test"]
+    build:
+      context: .
+      target: test
+    environment:
+      TEST_DATABASE_URL: postgresql://callzo:${POSTGRES_PASSWORD:-local-dev-password}@db:5432/usage_test
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:
